@@ -49,10 +49,9 @@ class AIAgent:
     
     def replay(self, game_reward=0):
         for state, action, reward, next_state, done in self.memory:
-            target = reward
-            next_state = torch.FloatTensor(next_state).to(device).unsqueeze(0)
+            target = reward + game_reward
             if not done:
-                # next_state = torch.FloatTensor(next_state).to(device).unsqueeze(0)
+                next_state = torch.FloatTensor(next_state).to(device).unsqueeze(0)
                 with torch.no_grad():
                     max = torch.max(self.network(next_state)).item()
                     target = game_reward + reward + self.gamma * max
@@ -69,4 +68,5 @@ class AIAgent:
             loss.backward()
             self.optimizer.step()
         if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+            self.epsilon *= self.epsilon_deca
+        

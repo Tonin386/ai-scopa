@@ -19,16 +19,17 @@ def find_combinations(array, target_sum):
     return result
 
 class Game:
-    def __init__(self, ai_agent=None, mode="train", main_player=0) -> None:
-        self.teams = [Team(1), Team(2)]
-        self.players = [Player(self.teams[0], 0), Player(self.teams[1], 1), Player(self.teams[0], 2), Player(self.teams[1], 3)]
+    def __init__(self, ai_agent=None, mode="train", main_player=0, train_level="high", verbose=False) -> None:
+        self.teams = [Team(0), Team(1)]
+        self.players = [Player(self.teams[0], 0, ai_agent=ai_agent), Player(self.teams[1], 1, ai_agent=ai_agent), Player(self.teams[0], 2, ai_agent=ai_agent), Player(self.teams[1], 3, ai_agent=ai_agent)]
         self.deck = [Card(i+1, f) for f in FAMILIES for i in range(10)]
         self.turn_number = 0
         self.start_number = 0
         self.pot = []
         self.mode = mode
-        self.players[main_player].ai_agent = ai_agent
         self.main_player = main_player
+        self.train_level = train_level
+        self.verbose = verbose
 
     def potToArray(self) -> object:
         num_pot = np.zeros(40)
@@ -99,13 +100,14 @@ class Game:
     def isScopa(self) -> bool:
         return len(self.pot) == 0
     
-    def countPoints(self, verbose=False) -> None:
-        if not verbose:
+    def countPoints(self) -> None:
+        if not self.verbose:
             print = do_nothing
+
         team1_cards = self.teams[0].won_cards
         team2_cards = self.teams[1].won_cards
         team1_wonPoints = 0
-        team2_wonPoints = 1
+        team2_wonPoints = 0
         print("Team1 cards: %s" % str([str(x) for x in team1_cards]))
         print("Team2 cards: %s" % str([str(x) for x in team2_cards]))
 
@@ -115,7 +117,7 @@ class Game:
                 team1_wonPoints += 1
                 print("Team1 won cards")
             else:
-                team1_wonPoints += 1
+                team2_wonPoints += 1
                 print("Team2 won cards")
 
         #Who has more golds?
@@ -126,7 +128,7 @@ class Game:
                 team1_wonPoints += 1
                 print("Team1 won golds")
             else:
-                team1_wonPoints += 1
+                team2_wonPoints += 1
                 print("Team2 won golds")
 
         #Who made primera? cazzo
@@ -158,7 +160,7 @@ class Game:
                 team1_wonPoints += 1
                 print("Team1 won primera")
             else:
-                team1_wonPoints += 1
+                team2_wonPoints += 1
                 print("Team2 won primera")
 
         #Did someone make napola? How much points?
@@ -182,7 +184,7 @@ class Game:
                     points += 1
                 
             if points >= 3:
-                team1_wonPoints += points
+                team2_wonPoints += points
                 print("Team2 made napola (%d)" % points)
 
         #Who has Settebello?
@@ -190,7 +192,7 @@ class Game:
             team1_wonPoints += 1
             print("Team1 won Settebello")
         else:
-            team1_wonPoints += 1
+            team2_wonPoints += 1
             print("Team2 won Settebello")
 
         self.teams[0].points += team1_wonPoints
@@ -205,40 +207,46 @@ class Game:
             current_state = self.getState()
             current_state = np.reshape(current_state, [1, 20])
             if self.mode != "cheat":
-                played_card = self.players[self.turn_number].playCard() if self.players[self.turn_number].id != self.main_player else self.players[self.turn_number].playCard(human_pick=False, random_pick=False, state=current_state)
+                if self.mode == "true-random":
+                    played_card = self.players[self.turn_number].playCard()
+                elif self.train_level == "low":
+                    played_card = self.players[self.turn_number].playCard() if self.players[self.turn_number].id != self.main_player else self.players[self.turn_number].playCard(human_pick=False, random_pick=False, state=current_state)
+                else:
+                    if self.turn_number == self.main_player:
+                        # print("Better AI hand is: ", [str(card) for card in self.players[0].cards])
+                        pass
+                    played_card = self.players[self.turn_number].playCard(human_pick=False, random_pick=False, state=current_state)
             else:
                 if self.turn_number != self.main_player:
                     print(f"You have to say what player #{self.turn_number} has played.")
                     played_card = self.players[self.turn_number].playCard(human_pick=True, random_pick=False)
                 else:
                     played_card = self.players[self.turn_number].playCard(human_pick=False, random_pick=False, state=current_state)
-                    print(f"AI played card {str(played_card)}")
 
             self.pot.append(played_card[0])
             won_cards = self.managePot()
             if len(won_cards) >= 1:
                 last_taker = self.turn_number
             self.players[self.turn_number].team.won_cards.extend(won_cards)
-            if self.mode == "random":
-                # print("Player %s plays %s. Pot is now %s" % (self.players[self.turn_number], played_card[0], [str(card) for card in self.pot]))
-                pass
+            if self.verbose:
+                print("Player %s plays %s. Pot is now %s" % (self.players[self.turn_number], played_card[0], [str(card) for card in self.pot]))
 
             if not self.isOver() and self.isScopa():
                 reward += 1
                 self.players[self.turn_number].team.points += 1
             
-            if not self.isOver() and self.turn_number == 0:
+            if not self.isOver() and self.turn_number == self.main_player:
                 reward += len(won_cards) / 40
                 new_state = self.getState()
                 new_state = np.reshape(new_state, [1, 20])
                 if self.mode == "train":
-                    self.players[0].ai_agent.remember(current_state, played_card[1], reward, new_state, self.isOver())
+                    self.players[self.main_player].ai_agent.remember(current_state, played_card[1], reward, new_state, self.isOver())
 
             self.turn_number = (self.turn_number + 1) % 4
 
         self.players[last_taker].team.won_cards.extend(self.pot)
         reward_points = self.countPoints()
-        game_reward = reward_points[0]
+        game_reward = reward_points[self.players[self.main_player].team.id]
         # print("Reward for this game:", game_reward)
         new_state = self.getState()
         new_state = np.reshape(new_state, [1, 20])

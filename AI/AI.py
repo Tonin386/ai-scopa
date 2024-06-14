@@ -10,11 +10,11 @@ class AI(nn.Module):
     def __init__(self, state_size, action_size):
         super(AI, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(state_size, 32),
+            nn.Linear(state_size, 16),
             nn.ReLU(),
-            nn.Linear(32, 16),
+            nn.Linear(16, 8),
             nn.ReLU(),
-            nn.Linear(16, action_size)
+            nn.Linear(8, action_size)
         ).to(device)
 
     def forward(self, x):
